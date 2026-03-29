@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "lattice-sdk"
+version = "0.1.0"
+description = "Stop manually configuring proxies. Use the official Lattice SDK to secure your AI pipeline in 1 line of code."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.9"
+dependencies = ["openai>=1.30.0"]
+
+[project.optional-dependencies]
+telemetry = ["httpx>=0.27.0"]
+dev       = ["pytest>=8.0", "pytest-asyncio>=0.23", "respx>=0.21", "python-dotenv>=1.0"]
+
+[project.urls]
+Homepage      = "https://github.com/Karcsihack/lattice-python-sdk"
+Documentation = "https://docs.lattice.dev/sdk/python"
+"Bug Tracker" = "https://github.com/Karcsihack/lattice-python-sdk/issues"
+
+[project.scripts]
+lattice-check = "lattice_sdk.main:_resolve_proxy_url"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths    = ["tests"]

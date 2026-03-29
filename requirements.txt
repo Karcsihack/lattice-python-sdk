@@ -1,0 +1,6 @@
+# Runtime dependency — pinned minimum to guarantee stable interface.
+openai>=1.30.0
+
+# Optional: load .env files automatically during development.
+# Required only if you use example_usage.py or run tests locally.
+python-dotenv>=1.0.0
