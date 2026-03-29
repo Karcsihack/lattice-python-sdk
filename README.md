@@ -106,21 +106,24 @@ print(report)
 Sample output:
 
 ```
-┌─ Lattice Telemetry Report ─────────────────────────────┐
-│  Total latency   :    342.7 ms (client-side)           │
-│  Proxy latency   :     18.3 ms (server-side)           │
-│  PII anonymized  :   ✓ YES                             │
-│  Redacted fields : email, phone_number                 │
-└────────────────────────────────────────────────────────┘
+[LATTICE] ┌ Original Text  : Hello, I'm John Smith. My ID is 12345678Z and my email is john@email.com
+[LATTICE] └ Text to Cloud  : Hello, I'm [USER_1]. My ID is [ID_NUMBER_2] and my email is [EMAIL_3]
+[LATTICE] ✓ Completed      | entities=3 | latency_anon=91ms | latency_total=308ms
 ```
 
-The telemetry module validates the following headers injected by the Lattice Proxy:
+> No real PII ever reaches the cloud. The upstream API only sees tokens.
 
-| Header                       | Value             | Meaning                                 |
-| ---------------------------- | ----------------- | --------------------------------------- |
-| `X-Lattice-Anonymized`       | `true` / `false`  | PII was detected and anonymized         |
-| `X-Lattice-Redacted-Fields`  | `email, ssn, ...` | Comma-separated list of redacted fields |
-| `X-Lattice-Proxy-Latency-Ms` | `18.3`            | Proxy-side processing time (ms)         |
+The telemetry module reads the following headers injected by the Lattice Proxy:
+
+| Header                       | Example value            | Meaning                                      |
+| ---------------------------- | ------------------------ | -------------------------------------------- |
+| `X-Lattice-Anonymized`       | `true`                   | PII was detected and anonymized              |
+| `X-Lattice-Redacted-Fields`  | `email, ssn`             | Comma-separated list of redacted field types |
+| `X-Lattice-Entity-Count`     | `3`                      | Number of PII entities found                 |
+| `X-Lattice-Anon-Latency-Ms`  | `91`                     | Time spent on anonymization (ms)             |
+| `X-Lattice-Proxy-Latency-Ms` | `18`                     | Total proxy-side processing time (ms)        |
+| `X-Lattice-Original-Text`    | `Hello, I'm John...`     | Prompt snippet before anonymization          |
+| `X-Lattice-Anonymized-Text`  | `Hello, I'm [USER_1]...` | Prompt snippet sent to the upstream LLM      |
 
 ---
 

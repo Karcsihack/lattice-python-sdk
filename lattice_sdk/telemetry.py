@@ -23,11 +23,19 @@ from typing import Generator, Mapping
 # ---------------------------------------------------------------------------
 
 # Set by the proxy to "true" when PII was detected and anonymized.
-_HEADER_ANONYMIZED       = "X-Lattice-Anonymized"
+_HEADER_ANONYMIZED        = "X-Lattice-Anonymized"
 # Set by the proxy with a short description of what was redacted.
-_HEADER_REDACTED_FIELDS  = "X-Lattice-Redacted-Fields"
+_HEADER_REDACTED_FIELDS   = "X-Lattice-Redacted-Fields"
 # Set by the proxy with its own processing time (optional).
-_HEADER_PROXY_LATENCY_MS = "X-Lattice-Proxy-Latency-Ms"
+_HEADER_PROXY_LATENCY_MS  = "X-Lattice-Proxy-Latency-Ms"
+# Set by the proxy with the anonymization latency in ms (optional).
+_HEADER_ANON_LATENCY_MS   = "X-Lattice-Anon-Latency-Ms"
+# Set by the proxy with the number of anonymized entities found.
+_HEADER_ENTITY_COUNT      = "X-Lattice-Entity-Count"
+# Set by the proxy with the original (pre-anonymization) prompt snippet.
+_HEADER_ORIGINAL_TEXT     = "X-Lattice-Original-Text"
+# Set by the proxy with the anonymized prompt that was sent upstream.
+_HEADER_ANONYMIZED_TEXT   = "X-Lattice-Anonymized-Text"
 
 
 # ---------------------------------------------------------------------------
@@ -40,45 +48,61 @@ class TelemetryReport:
     A structured summary of a single Lattice-proxied LLM call.
 
     Attributes:
-        total_latency_ms:    Wall-clock time from request start to response
-                             end, measured client-side (milliseconds).
-        proxy_latency_ms:    Processing time reported by the Lattice Proxy
-                             itself, if the header is present (milliseconds).
-                             ``None`` when the header is absent.
-        anonymized:          ``True`` when the proxy confirmed PII was handled.
-        redacted_fields:     List of field names the proxy anonymized, e.g.
-                             ``["email", "phone_number"]``.  Empty list when
-                             no fields were redacted or the header is absent.
-        raw_headers:         The full response headers for custom inspection.
+        total_latency_ms:  Wall-clock time from request start to response
+                           end, measured client-side (milliseconds).
+        proxy_latency_ms:  Processing time reported by the Lattice Proxy
+                           itself, if the header is present (milliseconds).
+                           ``None`` when the header is absent.
+        anon_latency_ms:   Time the proxy spent on anonymization (ms).
+                           ``None`` when the header is absent.
+        anonymized:        ``True`` when the proxy confirmed PII was handled.
+        entity_count:      Number of PII entities anonymized. ``None`` if
+                           the header is absent.
+        redacted_fields:   List of field names the proxy anonymized, e.g.
+                           ``["email", "phone_number"]``.  Empty list when
+                           no fields were redacted or the header is absent.
+        original_text:     Prompt snippet before anonymization (may be
+                           truncated by the proxy). ``None`` if not provided.
+        anonymized_text:   Prompt snippet after anonymization (what the
+                           upstream LLM actually received). ``None`` if not
+                           provided.
+        raw_headers:       The full response headers for custom inspection.
     """
 
-    total_latency_ms:    float
-    proxy_latency_ms:    float | None
-    anonymized:          bool
-    redacted_fields:     list[str]
-    raw_headers:         dict[str, str] = field(default_factory=dict)
+    total_latency_ms:  float
+    proxy_latency_ms:  float | None
+    anon_latency_ms:   float | None
+    anonymized:        bool
+    entity_count:      int | None
+    redacted_fields:   list[str]
+    original_text:     str | None
+    anonymized_text:   str | None
+    raw_headers:       dict[str, str] = field(default_factory=dict)
 
     def __str__(self) -> str:
-        lines = [
-            "┌─ Lattice Telemetry Report ─────────────────────────────┐",
-            f"│  Total latency   : {self.total_latency_ms:>8.1f} ms (client-side)       │",
-        ]
-        if self.proxy_latency_ms is not None:
+        lines: list[str] = []
+
+        # ── Text comparison block (only when proxy supplies both snippets) ──
+        if self.original_text:
             lines.append(
-                f"│  Proxy latency   : {self.proxy_latency_ms:>8.1f} ms (server-side)       │"
+                f"[LATTICE] \u250c Original Text  : {self.original_text}"
             )
-        anonymized_str = "✓ YES" if self.anonymized else "✗ NO"
-        lines.append(
-            f"│  PII anonymized  :   {anonymized_str:<36}│"
-        )
-        if self.redacted_fields:
-            fields_str = ", ".join(self.redacted_fields)
+        if self.anonymized_text:
             lines.append(
-                f"│  Redacted fields : {fields_str:<38}│"
+                f"[LATTICE] \u2514 Text to Cloud  : {self.anonymized_text}"
             )
-        lines.append(
-            "└────────────────────────────────────────────────────────┘"
-        )
+
+        # ── Summary line ────────────────────────────────────────────────────
+        parts: list[str] = []
+        if self.entity_count is not None:
+            parts.append(f"entities={self.entity_count}")
+        if self.anon_latency_ms is not None:
+            parts.append(f"latency_anon={self.anon_latency_ms:.0f}ms")
+        parts.append(f"latency_total={self.total_latency_ms:.0f}ms")
+
+        status = "\u2713 Completed" if self.anonymized else "\u2717 Not anonymized"
+        lines.append(f"[LATTICE] {status:<14} | {' | '.join(parts)}")
+
         return "\n".join(lines)
 
 
@@ -155,11 +179,37 @@ class LatencyTracker:
             except ValueError:
                 pass
 
+        # Parse anonymization-specific latency.
+        anon_latency_ms: float | None = None
+        raw_anon_latency = headers.get(_HEADER_ANON_LATENCY_MS)
+        if raw_anon_latency:
+            try:
+                anon_latency_ms = float(raw_anon_latency)
+            except ValueError:
+                pass
+
+        # Parse entity count.
+        entity_count: int | None = None
+        raw_entity_count = headers.get(_HEADER_ENTITY_COUNT)
+        if raw_entity_count:
+            try:
+                entity_count = int(raw_entity_count)
+            except ValueError:
+                pass
+
+        # Parse text snippets.
+        original_text   = headers.get(_HEADER_ORIGINAL_TEXT)   or None
+        anonymized_text = headers.get(_HEADER_ANONYMIZED_TEXT) or None
+
         return TelemetryReport(
             total_latency_ms=self._elapsed_ms,
             proxy_latency_ms=proxy_latency_ms,
+            anon_latency_ms=anon_latency_ms,
             anonymized=anonymized,
+            entity_count=entity_count,
             redacted_fields=redacted_fields,
+            original_text=original_text,
+            anonymized_text=anonymized_text,
             raw_headers=headers,
         )
 
