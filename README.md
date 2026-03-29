@@ -2,6 +2,7 @@
 
 > **Stop manually configuring proxies. Use the official Lattice SDK to secure your AI pipeline in 1 line of code.**
 
+[![Security & Quality](https://github.com/Karcsihack/lattice-python-sdk/actions/workflows/security.yml/badge.svg)](https://github.com/Karcsihack/lattice-python-sdk/actions/workflows/security.yml)
 [![PyPI version](https://img.shields.io/pypi/v/lattice-sdk.svg)](https://pypi.org/project/lattice-sdk/)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
